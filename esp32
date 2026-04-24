@@ -1,0 +1,221 @@
+#include <ESP32Servo.h>
+
+const int b1 = 16;
+const int b2 = 17;
+
+const int in1 = 18;
+const int in2 = 19;
+const int in3 = 22;
+const int in4 = 21;
+
+const int SERVO1_PIN = 13;
+const int SERVO2_PIN = 14;
+const int SERVO_REPOSO   = 0;
+const int SERVO_DEPOSITO = 90;
+
+const int SERVO2_REPOSO   = 180; 
+const int SERVO2_DEPOSITO = 90;
+
+Servo servo1;
+Servo servo2;
+
+int freq       = 5000;
+int resolution = 8;
+
+float Kp            = 4.5;
+int   veloBANDA     = 200;
+int   velocidadBase = 180;
+int   velocidad     = velocidadBase;
+int   velocidadizq  = velocidadBase;
+
+float CURVA_FACTOR  = 0.25;
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(b1,  OUTPUT);
+  pinMode(b2,  OUTPUT);
+  pinMode(in1, OUTPUT);
+  pinMode(in2, OUTPUT);
+  pinMode(in3, OUTPUT);
+  pinMode(in4, OUTPUT);
+
+  ledcAttach(b1,  freq, resolution);
+  ledcAttach(b2,  freq, resolution);
+  ledcAttach(in1, freq, resolution);
+  ledcAttach(in2, freq, resolution);
+  ledcAttach(in3, freq, resolution);
+  ledcAttach(in4, freq, resolution);
+
+  ledcWrite(b1,  0);
+  ledcWrite(b2,  0);
+  ledcWrite(in1, 0);
+  ledcWrite(in2, 0);
+  ledcWrite(in3, 0);
+  ledcWrite(in4, 0);
+
+  servo1.attach(SERVO1_PIN);
+  servo2.attach(SERVO2_PIN);
+  servo1.write(SERVO_REPOSO);
+  servo2.write(SERVO2_REPOSO);
+
+  Serial.println("BeachBoy listo.");
+}
+
+void loop() {
+  if (Serial.available()) {
+    String mensaje = Serial.readStringUntil('\n');
+    mensaje.trim();
+
+    if (mensaje.length() == 0) return;
+
+    char c0 = mensaje[0];
+
+    if (isdigit(c0) || c0 == '-') {
+      float error  = mensaje.toFloat();
+      int   ajuste = (int)(error * Kp);
+      int velDer = constrain(velocidadBase - ajuste, 40, 255);
+      int velIzq = constrain(velocidadBase + ajuste, 40, 255);
+      MotorIzq(velIzq);
+      MotorDer(velDer);
+    }
+    else if (mensaje == "F")  { Forward(velocidad, velocidadizq);              }
+    else if (mensaje == "B")  { Back(velocidad, velocidadizq);                 }
+    else if (mensaje == "BL") { BackLento(140);                                }
+    else if (mensaje == "BK") { while(Serial.available()) Serial.read();
+                                BackRight(velocidad);                          }
+    else if (mensaje == "BA") { while(Serial.available()) Serial.read();
+                                BackLeft(velocidad);                           }
+    else if (mensaje == "R")  { Right(velocidad, velocidadizq);                }
+    else if (mensaje == "L")  { Left(velocidad, velocidadizq);                 }
+    else if (mensaje == "T")  { Right(velocidad, velocidadizq);                }
+    else if (mensaje == "D")  { Left(velocidad, velocidadizq);                 }
+    else if (mensaje == "S")  { while(Serial.available()) Serial.read();
+                                STOP(velocidad, velocidadizq);                 }
+    else if (mensaje == "P")  { PivotRight(velocidadizq);                      }
+    else if (mensaje == "CL") { CurvaSuaveIzq(velocidadBase);                 }
+    else if (mensaje == "CR") { CurvaSuaveDer(velocidadBase);                 }
+    else if (mensaje == "J")  { ForwardBANDA(veloBANDA);                       }
+    else if (mensaje == "M")  { ForwardBANDA(veloBANDA);                       }
+    else if (mensaje == "DO") { AbrirDeposito();                               }
+    else if (mensaje == "DC") { CerrarDeposito();                              }
+    else if (mensaje == "W")  { UPVEL();                                       }
+    else if (mensaje == "X")  { DOWNVEL();                                     }
+    else if (mensaje == "Q")  { UPVEL_BANDA();                                 }
+    else if (mensaje == "A")  { DOWNVEL_BANDA();                               }
+    else if (mensaje == "Y")  { UPVEL_BASE();                                  }
+    else if (mensaje == "Z")  { DOWNVEL_BASE();                                }
+    else if (mensaje == "K")  { KM();                                          }
+    else if (mensaje == "k")  { Km();                                          }
+  }
+}
+
+void MotorIzq(double pwm) {
+  pwm = -pwm;
+  pwm = constrain(pwm, -255, 255);
+  if (pwm >= 0) { ledcWrite(in1, pwm);  ledcWrite(in2, 0);    }
+  else          { ledcWrite(in1, 0);    ledcWrite(in2, -pwm); }
+}
+
+void MotorDer(double pwm) {
+  pwm = -pwm;
+  pwm = constrain(pwm, -255, 255);
+  if (pwm >= 0) { ledcWrite(in3, pwm);  ledcWrite(in4, 0);    }
+  else          { ledcWrite(in3, 0);    ledcWrite(in4, -pwm); }
+}
+
+void MotorBANDA(double pwm) {
+  pwm = constrain(pwm, -255, 255);
+  if (pwm >= 0) { ledcWrite(b1, pwm);  ledcWrite(b2, 0);    }
+  else          { ledcWrite(b1, 0);    ledcWrite(b2, -pwm); }
+}
+
+void Forward(int vel, int velIzq) {
+  MotorIzq(velIzq); MotorDer(vel);
+  Serial.println("FORWARD");
+}
+
+void Back(int vel, int velIzq) {
+  MotorIzq(-velIzq); MotorDer(-vel);
+  Serial.println("BACK");
+}
+
+void BackLento(int vel) {
+  MotorIzq(-vel); MotorDer(-vel);
+  Serial.println("BACK_LENTO");
+}
+
+void BackLeft(int vel) {
+  MotorIzq(-195);
+  MotorDer(-100);
+  Serial.println("BACK_LEFT");
+}
+
+void BackRight(int vel) {
+  MotorIzq(-100);
+  MotorDer(-195);
+  Serial.println("BACK_RIGHT");
+}
+
+void Right(int vel, int velIzq) {
+  MotorIzq(velIzq); MotorDer(-vel);
+  Serial.println("RIGHT");
+}
+
+void Left(int vel, int velIzq) {
+  MotorIzq(-velIzq); MotorDer(vel);
+  Serial.println("LEFT");
+}
+
+void STOP(int vel, int velIzq) {
+  MotorIzq(0); MotorDer(0);
+  Serial.println("STOP");
+}
+
+void PivotRight(int vel) {
+  MotorIzq(vel); MotorDer(0);
+  Serial.println("PIVOT_RIGHT");
+}
+
+void CurvaSuaveIzq(int vel) {
+  MotorIzq((int)(vel * CURVA_FACTOR));
+  MotorDer(vel);
+  Serial.println("CURVA_IZQ");
+}
+
+void CurvaSuaveDer(int vel) {
+  MotorIzq(vel);
+  MotorDer((int)(vel * CURVA_FACTOR));
+  Serial.println("CURVA_DER");
+}
+
+void ForwardBANDA(int vel) {
+  MotorBANDA(-vel);
+  Serial.println("BANDA_ON");
+}
+
+void STOPBANDA(int vel) {
+  MotorBANDA(0);
+  Serial.println("BANDA_OFF");
+}
+
+void AbrirDeposito() {
+  servo1.write(SERVO_DEPOSITO);
+  servo2.write(SERVO2_DEPOSITO);
+  Serial.println("DEPOSITO_ABIERTO");
+}
+
+void CerrarDeposito() {
+  servo1.write(SERVO_REPOSO);
+  servo2.write(SERVO2_REPOSO);
+  Serial.println("DEPOSITO_CERRADO");
+}
+
+void UPVEL()        { velocidad     = constrain(velocidad     + 10, 0, 255); }
+void DOWNVEL()      { velocidad     = constrain(velocidad     - 10, 0, 255); }
+void UPVEL_BANDA()  { veloBANDA     = constrain(veloBANDA     + 10, 0, 255); }
+void DOWNVEL_BANDA(){ veloBANDA     = constrain(veloBANDA     - 10, 0, 255); }
+void UPVEL_BASE()   { velocidadBase = constrain(velocidadBase + 10, 0, 255); }
+void DOWNVEL_BASE() { velocidadBase = constrain(velocidadBase - 10, 0, 255); }
+void KM()           { Kp += 0.1; }
+void Km()           { Kp -= 0.1; }
